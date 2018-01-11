@@ -4,9 +4,10 @@ gi.require_version('Gst', '1.0')
 from gi.repository import GObject, Gst
 Gst.init(None)
 from time import sleep
+import itertools
 
 
-def watch_stream(callback, fps=10):
+def watch_stream(callback, fps=10, n_frames=-1):
     image_arr = None
 
     def gst_to_numpy(sample):
@@ -22,6 +23,7 @@ def watch_stream(callback, fps=10):
         return arr
 
     def new_buffer(sink, data):
+        nonlocal image_arr
         sample = sink.emit('pull-sample')
         image_arr = gst_to_numpy(sample)
         return Gst.FlowReturn.OK
@@ -53,14 +55,21 @@ def watch_stream(callback, fps=10):
     bus=pipeline.get_bus()
 
     sleep(3)  # wait for camera to warm up
-    while True:
-        message=bus.timed_pop_filtered(10000, Gst.MessageType.ANY)
+
+    how_long = None
+    if n_frames < 1:
+        how_long = itertools.repeat(None) # Infinite loop
+    else:
+        how_long = range(n_frames)
+
+    for _ in how_long:
+        message = bus.timed_pop_filtered(10000, Gst.MessageType.ANY)
 
         if image_arr is not None:
             callback(image_arr)
         if message:
             if message.type == Gst.MessageType.ERROR:
-                err, debug=message.parse_error()
+                err, debug = message.parse_error()
                 print(('Error received from element %s: %s' % (
                     message.src.get_name(), err)))
                 print(('Debugging information: %s' % debug))
